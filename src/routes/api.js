@@ -17,6 +17,7 @@ router.put('/auth/profile', authController.updateProfile);
 router.get('/wallets', walletController.getWallets);
 router.post('/wallets/deposit', walletController.deposit);
 router.post('/wallets/withdraw', walletController.withdraw);
+router.post('/wallets/claim-streak', walletController.claimDailyStreak);
 router.get('/wallets/transactions', walletController.getTransactions);
 
 // 3. Subscription Plans Routes
@@ -26,6 +27,7 @@ router.post('/plans/purchase', planController.purchasePlan);
 
 // 4. Ad Viewing & Earning Engine Routes
 router.get('/ads', adController.getAds);
+router.post('/ads/start', adController.startAdSession);
 router.post('/ads/complete', adController.completeAdView);
 router.post('/ads/reset-daily', adController.simulateDailyReset);
 

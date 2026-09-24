@@ -1,4 +1,6 @@
 const prisma = require('../config/prisma');
+const { resolveActivePlan, getTodayString } = require('../utils/planHelper');
+const { createAdChallenge, verifyAdChallenge } = require('../utils/adSecurity');
 
 // Get available ads catalog (including Google Ads units)
 exports.getAds = async (req, res) => {
@@ -28,24 +30,18 @@ exports.getAds = async (req, res) => {
   }
 };
 
-// Complete Ad View & Disburse Reward to Earning Wallet
-exports.completeAdView = async (req, res) => {
+// Start Ad Session & Generate Anti-Bot Security Challenge
+exports.startAdSession = async (req, res) => {
   try {
     const userId = parseInt(req.body.userId) || 1;
-    const { adId, watchedSeconds, mathAnswer, expectedAnswer } = req.body;
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const adId = parseInt(req.body.adId);
 
-    // 1. Verify Anti-Bot Security Check
-    if (mathAnswer === undefined || parseInt(mathAnswer) !== parseInt(expectedAnswer)) {
-      return res.status(400).json({ success: false, message: 'Invalid anti-bot verification answer. Please solve the calculation correctly.' });
+    if (!adId) {
+      return res.status(400).json({ success: false, message: 'Ad ID is required.' });
     }
 
-    // 2. Fetch User Active Plan - STRICT RULE: Cannot earn without active plan!
-    const activePlan = await prisma.userPlan.findFirst({
-      where: { userId, status: 'Active' },
-      orderBy: { id: 'desc' }
-    });
-
+    // 1. Verify Active Plan
+    const activePlan = await resolveActivePlan(prisma, userId);
     if (!activePlan) {
       return res.status(403).json({
         success: false,
@@ -53,79 +49,29 @@ exports.completeAdView = async (req, res) => {
       });
     }
 
-    // Check daily limit and auto-reset if new day
-    let adsWatchedToday = activePlan.adsWatchedToday;
-    if (activePlan.lastWatchDate !== todayStr) {
-      adsWatchedToday = 0;
-    }
-
-    if (adsWatchedToday >= activePlan.dailyLimit) {
+    // 2. Verify Daily Limit
+    if (activePlan.adsWatchedToday >= activePlan.dailyLimit) {
       return res.status(400).json({
         success: false,
-        message: `Daily limit reached! You have watched ${adsWatchedToday}/${activePlan.dailyLimit} ads today. Your quota resets at 00:00 midnight or upgrade your plan to increase limits.`
+        message: `Daily limit reached! You have watched ${activePlan.adsWatchedToday}/${activePlan.dailyLimit} ads today.`
       });
     }
 
-    // Fetch ad details
-    const ad = await prisma.ad.findUnique({
-      where: { id: parseInt(adId) }
-    });
+    // 3. Verify Ad Exists
+    const ad = await prisma.ad.findUnique({ where: { id: adId } });
     if (!ad) {
       return res.status(404).json({ success: false, message: 'Ad not found.' });
     }
 
-    // Verify watch time
-    if (watchedSeconds < ad.durationSeconds - 1) {
-      return res.status(400).json({
-        success: false,
-        message: `Watch time requirement not met. You must watch the entire ${ad.durationSeconds} seconds of the ad to earn reward.`
-      });
-    }
-
-    const earningRate = activePlan.earningPerAd;
-    const newWatchedToday = adsWatchedToday + 1;
-    const newTotalWatched = activePlan.totalAdsWatched + 1;
-
-    // Update user plan counters
-    await prisma.userPlan.update({
-      where: { id: activePlan.id },
-      data: {
-        adsWatchedToday: newWatchedToday,
-        totalAdsWatched: newTotalWatched,
-        lastWatchDate: todayStr
-      }
-    });
-
-    // Disburse reward to EARNING WALLET
-    await prisma.wallet.update({
-      where: { userId },
-      data: { earningBalance: { increment: earningRate } }
-    });
-
-    const txId = 'AD-' + Math.floor(10000000 + Math.random() * 90000000);
-
-    // Record in unified transactions ledger
-    await prisma.transaction.create({
-      data: {
-        userId,
-        txId,
-        type: 'Earning',
-        targetWallet: 'Earning',
-        amount: earningRate,
-        description: `Earned from viewing ${ad.isGoogleAd ? 'Google Ad: ' : 'sponsored ad: '}"${ad.title}"`,
-        gateway: ad.isGoogleAd ? 'Google AdSense Partner' : 'Ad Engagement Engine',
-        status: 'Completed'
-      }
-    });
+    // 4. Generate Challenge Ticket
+    const challenge = createAdChallenge(userId, adId);
 
     return res.json({
       success: true,
-      message: `+₨ ${earningRate.toFixed(2)} disbursed to your Earning Wallet!`,
-      rewardAmount: earningRate,
-      adsWatchedToday: newWatchedToday,
-      dailyLimit: activePlan.dailyLimit,
-      remainingToday: activePlan.dailyLimit - newWatchedToday,
-      txId
+      challengeToken: challenge.token,
+      num1: challenge.num1,
+      num2: challenge.num2,
+      durationSeconds: ad.durationSeconds
     });
 
   } catch (error) {
@@ -133,11 +79,161 @@ exports.completeAdView = async (req, res) => {
   }
 };
 
+// Complete Ad View & Disburse Reward to Earning Wallet (Atomic Transaction)
+exports.completeAdView = async (req, res) => {
+  try {
+    const userId = parseInt(req.body.userId) || 1;
+    const {
+      adId,
+      watchedSeconds,
+      mathAnswer,
+      expectedAnswer,
+      challengeToken
+    } = req.body;
+
+    const parsedAdId = parseInt(adId);
+    if (!parsedAdId) {
+      return res.status(400).json({ success: false, message: 'adId is required.' });
+    }
+
+    // Fetch ad details
+    const ad = await prisma.ad.findUnique({
+      where: { id: parsedAdId }
+    });
+    if (!ad) {
+      return res.status(404).json({ success: false, message: 'Ad not found.' });
+    }
+
+    // 1. Verify Anti-Bot Security & Watch Time
+    if (challengeToken) {
+      // Secure token verification
+      const verifyResult = verifyAdChallenge(
+        challengeToken,
+        userId,
+        parsedAdId,
+        mathAnswer,
+        ad.durationSeconds
+      );
+      if (!verifyResult.valid) {
+        return res.status(400).json({ success: false, message: verifyResult.message });
+      }
+    } else {
+      // Legacy backward-compatible verification with strict check
+      if (mathAnswer === undefined || expectedAnswer === undefined || parseInt(mathAnswer) !== parseInt(expectedAnswer)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid anti-bot verification answer. Please solve the calculation correctly.'
+        });
+      }
+      if (watchedSeconds < ad.durationSeconds - 1) {
+        return res.status(400).json({
+          success: false,
+          message: `Watch time requirement not met. You must watch the entire ${ad.durationSeconds} seconds of the ad to earn reward.`
+        });
+      }
+    }
+
+    const todayStr = getTodayString();
+
+    // 2. Atomic Transaction: Check Active Plan, Daily & Lifetime Quotas, Update Counters & Disburse to Earning Wallet
+    const result = await prisma.$transaction(async (tx) => {
+      // Atomically fetch and validate active plan inside transaction
+      const activePlan = await resolveActivePlan(tx, userId);
+
+      if (!activePlan) {
+        throw new Error('Active subscription plan required to earn money from watching ads. Please choose a plan first.');
+      }
+
+      if (activePlan.adsWatchedToday >= activePlan.dailyLimit) {
+        throw new Error(`Daily limit reached! You have watched ${activePlan.adsWatchedToday}/${activePlan.dailyLimit} ads today.`);
+      }
+
+      if (activePlan.totalAdsQuota > 0 && activePlan.totalAdsWatched >= activePlan.totalAdsQuota) {
+        await tx.userPlan.update({
+          where: { id: activePlan.id },
+          data: { status: 'Expired' }
+        });
+        throw new Error('Your plan has reached its total lifetime ads quota! Please upgrade or renew your plan.');
+      }
+
+      const earningRate = activePlan.earningPerAd;
+      const newWatchedToday = activePlan.adsWatchedToday + 1;
+      const newTotalWatched = activePlan.totalAdsWatched + 1;
+
+      // Auto-expire if final ad of total quota
+      const isQuotaDone = activePlan.totalAdsQuota > 0 && newTotalWatched >= activePlan.totalAdsQuota;
+
+      // Update plan counters
+      await tx.userPlan.update({
+        where: { id: activePlan.id },
+        data: {
+          adsWatchedToday: newWatchedToday,
+          totalAdsWatched: newTotalWatched,
+          lastWatchDate: todayStr,
+          status: isQuotaDone ? 'Expired' : 'Active'
+        }
+      });
+
+      // Disburse reward strictly to EARNING WALLET
+      await tx.wallet.upsert({
+        where: { userId },
+        update: { earningBalance: { increment: earningRate } },
+        create: {
+          userId,
+          depositBalance: 0,
+          earningBalance: earningRate,
+          referralBalance: 0,
+          rewardsBalance: 0
+        }
+      });
+
+      const txId = 'AD-' + Math.floor(10000000 + Math.random() * 90000000);
+
+      // Record in unified transactions ledger
+      await tx.transaction.create({
+        data: {
+          userId,
+          txId,
+          type: 'Earning',
+          targetWallet: 'Earning',
+          amount: earningRate,
+          description: `Earned from viewing ${ad.isGoogleAd ? 'Google Ad: ' : 'sponsored ad: '}"${ad.title}"`,
+          gateway: ad.isGoogleAd ? 'Google AdSense Partner' : 'Ad Engagement Engine',
+          status: 'Completed'
+        }
+      });
+
+      return {
+        earningRate,
+        newWatchedToday,
+        dailyLimit: activePlan.dailyLimit,
+        remainingToday: activePlan.dailyLimit - newWatchedToday,
+        txId,
+        isQuotaDone
+      };
+    });
+
+    return res.json({
+      success: true,
+      message: `+₨ ${result.earningRate.toFixed(2)} disbursed to your Earning Wallet!`,
+      rewardAmount: result.earningRate,
+      adsWatchedToday: result.newWatchedToday,
+      dailyLimit: result.dailyLimit,
+      remainingToday: result.remainingToday,
+      txId: result.txId,
+      planExpired: result.isQuotaDone
+    });
+
+  } catch (error) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+};
+
 // Simulate 24-hour daily limit reset
 exports.simulateDailyReset = async (req, res) => {
   try {
     const userId = parseInt(req.body.userId) || 1;
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = getTodayString();
 
     await prisma.userPlan.updateMany({
       where: { userId, status: 'Active' },

@@ -19,26 +19,38 @@ app.use('/api', apiRoutes);
 app.get('/health', (req, res) => {
   res.json({
     status: 'online',
-    database: 'SQLite (local dev.db file)',
+    database: 'Neon PostgreSQL (Production Cloud DB)',
     orm: 'Prisma Client',
-    googleAds: 'Configured (AdSense ca-pub-9482019482019482)',
+    googleAds: 'Configured (AdSense ca-pub-4715061326676029)',
     timestamp: new Date().toISOString()
   });
 });
 
-// Start Server
-async function startServer() {
-  try {
-    console.log('🔄 [Prisma Init]: Checking database schema and seeding local .db file...');
-    await seedDatabase();
-    console.log('✅ [Prisma Ready]: Local SQLite .db file synced and ready.');
+let isInitialized = false;
 
-    app.listen(PORT, () => {
-      console.log(`🚀 [Server Ready]: Backend with Prisma running on http://localhost:${PORT}`);
-    });
+// Start Server / Init DB
+async function initServer() {
+  if (isInitialized) return;
+  try {
+    console.log('🔄 [Prisma Init]: Verifying database schema & seeding initial catalog...');
+    await seedDatabase();
+    isInitialized = true;
+    console.log('✅ [Prisma Ready]: Database synced and ready.');
   } catch (err) {
-    console.error('Fatal server startup error:', err);
+    console.error('Database initialization error:', err.message);
   }
 }
 
-startServer();
+// Start listening if running directly
+if (process.env.VERCEL !== '1') {
+  initServer().then(() => {
+    app.listen(PORT, () => {
+      console.log(`🚀 [Server Ready]: Backend with Prisma running on http://localhost:${PORT}`);
+    });
+  });
+} else {
+  // Ensure DB seed runs in serverless environment
+  initServer();
+}
+
+module.exports = app;
