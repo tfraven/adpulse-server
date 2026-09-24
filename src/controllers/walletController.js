@@ -10,7 +10,7 @@ const GATEWAY_LIMITS = {
 // Get 4 distinct wallet balances + aggregate Total Balance
 exports.getWallets = async (req, res) => {
   try {
-    const userId = parseInt(req.query.userId) || 1;
+    const userId = req.userId; // injected by requireAuth middleware
 
     let wallet = await prisma.wallet.findUnique({
       where: { userId }
@@ -52,7 +52,7 @@ exports.getWallets = async (req, res) => {
 // Deposit funds to Deposit Wallet (Atomic Transaction)
 exports.deposit = async (req, res) => {
   try {
-    const userId = parseInt(req.body.userId) || 1;
+    const userId = req.userId; // injected by requireAuth middleware
     const { amount, gateway, sender_number, trx_reference } = req.body;
     const numAmount = parseFloat(amount);
 
@@ -141,7 +141,7 @@ exports.deposit = async (req, res) => {
 // Withdraw funds - STRICT REQUIREMENT: Exclusively from "Earning Wallet"! (Atomic Transaction)
 exports.withdraw = async (req, res) => {
   try {
-    const userId = parseInt(req.body.userId) || 1;
+    const userId = req.userId; // injected by requireAuth middleware
     const { amount, method, account_title, account_number } = req.body;
     const numAmount = parseFloat(amount);
 
@@ -227,7 +227,7 @@ exports.withdraw = async (req, res) => {
 // Claim Daily Login Streak Bonus (Rewards Wallet)
 exports.claimDailyStreak = async (req, res) => {
   try {
-    const userId = parseInt(req.body.userId) || 1;
+    const userId = req.userId; // injected by requireAuth middleware
     const STREAK_REWARD = 25.0; // ₨ 25 Daily streak reward
     const todayStr = getTodayString();
 
@@ -295,7 +295,7 @@ exports.claimDailyStreak = async (req, res) => {
 // Unified Transaction History / Financial Ledger (Filterable by type)
 exports.getTransactions = async (req, res) => {
   try {
-    const userId = parseInt(req.query.userId) || 1;
+    const userId = req.userId; // injected by requireAuth middleware
     const filterType = req.query.type || 'All';
     const limit = parseInt(req.query.limit) || 50;
 

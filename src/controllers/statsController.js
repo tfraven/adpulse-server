@@ -3,7 +3,7 @@ const { resolveActivePlan, getTodayString } = require('../utils/planHelper');
 
 exports.getDashboardStats = async (req, res) => {
   try {
-    const userId = parseInt(req.query.userId) || 1;
+    const userId = req.userId; // injected by requireAuth middleware
 
     const user = await prisma.user.findUnique({
       where: { id: userId }

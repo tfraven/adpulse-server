@@ -1,3 +1,4 @@
+const bcrypt = require('bcryptjs');
 const prisma = require('./prisma');
 
 const INITIAL_PLANS = [
@@ -119,6 +120,8 @@ async function seedDatabase() {
     // 3. Seed Demo User
     const usersCount = await prisma.user.count();
     if (usersCount === 0) {
+      // Seed Demo User with real bcrypt password ('password123')
+      const demoPasswordHash = await bcrypt.hash('password123', 10);
       const demoUser = await prisma.user.create({
         data: {
           fullName: 'Sajid Khan',
@@ -127,7 +130,7 @@ async function seedDatabase() {
           country: 'Pakistan',
           referralCode: 'EARN9482',
           referredBy: 'TOPLEADER',
-          passwordHash: 'hashed_pwd'
+          passwordHash: demoPasswordHash
         }
       });
 

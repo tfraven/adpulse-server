@@ -33,7 +33,7 @@ exports.getAds = async (req, res) => {
 // Start Ad Session & Generate Anti-Bot Security Challenge
 exports.startAdSession = async (req, res) => {
   try {
-    const userId = parseInt(req.body.userId) || 1;
+    const userId = req.userId; // injected by requireAuth middleware
     const adId = parseInt(req.body.adId);
 
     if (!adId) {
@@ -82,7 +82,7 @@ exports.startAdSession = async (req, res) => {
 // Complete Ad View & Disburse Reward to Earning Wallet (Atomic Transaction)
 exports.completeAdView = async (req, res) => {
   try {
-    const userId = parseInt(req.body.userId) || 1;
+    const userId = req.userId; // injected by requireAuth middleware
     const {
       adId,
       watchedSeconds,
@@ -232,7 +232,7 @@ exports.completeAdView = async (req, res) => {
 // Simulate 24-hour daily limit reset
 exports.simulateDailyReset = async (req, res) => {
   try {
-    const userId = parseInt(req.body.userId) || 1;
+    const userId = req.userId; // injected by requireAuth middleware
     const todayStr = getTodayString();
 
     await prisma.userPlan.updateMany({

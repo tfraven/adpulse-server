@@ -31,7 +31,7 @@ exports.getPlans = async (req, res) => {
 // Get current active plan for user (checks validity expiration, lifetime quota, and daily reset)
 exports.getUserActivePlan = async (req, res) => {
   try {
-    const userId = parseInt(req.query.userId) || 1;
+    const userId = req.userId; // injected by requireAuth middleware
 
     // Atomically resolves validity, total quota exhaustion, and date rollover
     const activePlan = await resolveActivePlan(prisma, userId);
@@ -64,7 +64,7 @@ exports.getUserActivePlan = async (req, res) => {
 // Purchase plan - STRICT REQUIREMENT: Deducted atomically from Deposit Wallet balance!
 exports.purchasePlan = async (req, res) => {
   try {
-    const userId = parseInt(req.body.userId) || 1;
+    const userId = req.userId; // injected by requireAuth middleware
     const { planSlug } = req.body;
 
     if (!planSlug) {
