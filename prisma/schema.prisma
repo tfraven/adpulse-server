@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int           @id @default(autoincrement())
+  fullName     String
+  email        String        @unique
+  mobile       String
+  country      String
+  referralCode String        @unique
+  referredBy   String?
+  passwordHash String        @default("hashed_pwd")
+  createdAt    DateTime      @default(now())
+
+  wallet       Wallet?
+  userPlans    UserPlan[]
+  transactions Transaction[]
+  withdrawals  Withdrawal[]
+  deposits     Deposit[]
+}
+
+model Wallet {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  depositBalance  Float    @default(0.0)
+  earningBalance  Float    @default(0.0)
+  referralBalance Float    @default(0.0)
+  rewardsBalance  Float    @default(0.0)
+  updatedAt       DateTime @updatedAt
+}
+
+model Plan {
+  id           Int      @id @default(autoincrement())
+  slug         String   @unique
+  name         String
+  price        Float
+  totalAds     Int
+  dailyLimit   Int
+  earningPerAd Float
+  validityDays Int      @default(120)
+  badge        String?
+  description  String?
+}
+
+model UserPlan {
+  id              Int      @id @default(autoincrement())
+  userId          Int
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId          Int
+  planName        String
+  dailyLimit      Int
+  earningPerAd    Float
+  totalAdsQuota   Int
+  adsWatchedToday Int      @default(0)
+  totalAdsWatched Int      @default(0)
+  lastWatchDate   String   @default("")
+  purchasedAt     DateTime @default(now())
+  expiresAt       DateTime
+  status          String   @default("Active")
+}
+
+model Ad {
+  id              Int      @id @default(autoincrement())
+  title           String
+  sponsor         String
+  category        String
+  durationSeconds Int      @default(12)
+  bannerUrl       String
+  targetUrl       String
+  tagline         String?
+  isGoogleAd      Boolean  @default(false)
+  googleAdClient  String?  @default("ca-pub-9482019482019482")
+  googleAdSlot    String?  @default("1948201948")
+}
+
+model Transaction {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  txId         String   @unique
+  type         String   // Deposit, Earning, Withdrawal, Referral, Rewards, PlanPurchase
+  targetWallet String   // Deposit, Earning, Referral, Rewards
+  amount       Float
+  description  String
+  gateway      String?
+  status       String   @default("Completed")
+  createdAt    DateTime @default(now())
+}
+
+model Withdrawal {
+  id            Int      @id @default(autoincrement())
+  userId        Int
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  txId          String   @unique
+  amount        Float
+  method        String   // EasyPaisa, JazzCash, Bank Transfer
+  accountTitle  String
+  accountNumber String
+  status        String   @default("Completed")
+  createdAt     DateTime @default(now())
+}
+
+model Deposit {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  txId         String   @unique
+  amount       Float
+  gateway      String
+  senderNumber String
+  trxReference String
+  status       String   @default("Completed")
+  createdAt    DateTime @default(now())
+}
