@@ -9,9 +9,9 @@ const statsController = require('../controllers/statsController');
 
 // 1. Auth & Profile Routes
 router.post('/auth/register', authController.register);
+router.post('/auth/login', authController.login);
 router.get('/auth/profile', authController.getProfile);
 router.put('/auth/profile', authController.updateProfile);
-router.get('/auth/users', authController.getAllUsers);
 
 // 2. Multi-Wallet & Financial Ledger Routes
 router.get('/wallets', walletController.getWallets);

@@ -19,7 +19,7 @@ const INITIAL_ADS = [
     targetUrl: 'https://cloud.google.com',
     tagline: 'Deploy scalable microservices and machine learning models with $300 cloud credits.',
     isGoogleAd: true,
-    googleAdClient: 'ca-pub-9482019482019482',
+    googleAdClient: 'ca-pub-4715061326676029',
     googleAdSlot: '1948201948'
   },
   {
@@ -31,7 +31,7 @@ const INITIAL_ADS = [
     targetUrl: 'https://workspace.google.com',
     tagline: 'Custom business emails, secure cloud drive storage, and team productivity tools.',
     isGoogleAd: true,
-    googleAdClient: 'ca-pub-9482019482019482',
+    googleAdClient: 'ca-pub-4715061326676029',
     googleAdSlot: '1948201949'
   },
   {

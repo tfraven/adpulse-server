@@ -130,10 +130,49 @@ exports.register = async (req, res) => {
   }
 };
 
+// Login user (email-based, no password required per spec)
+exports.login = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Email address is required to sign in.' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() }
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'No registered account found with this email address. Please register a new account.' });
+    }
+
+    return res.json({
+      success: true,
+      message: `Welcome back, ${user.fullName}!`,
+      user: {
+        id: user.id,
+        full_name: user.fullName,
+        email: user.email,
+        mobile: user.mobile,
+        country: user.country,
+        referral_code: user.referralCode,
+        referred_by: user.referredBy,
+        created_at: user.createdAt
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Get current profile
 exports.getProfile = async (req, res) => {
   try {
-    const userId = parseInt(req.query.userId) || 1;
+    const userId = parseInt(req.query.userId);
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required.' });
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId }
     });
@@ -163,8 +202,12 @@ exports.getProfile = async (req, res) => {
 // Update profile (Email is strictly uneditable per requirement)
 exports.updateProfile = async (req, res) => {
   try {
-    const userId = parseInt(req.body.userId) || 1;
+    const userId = parseInt(req.body.userId);
     const { full_name, mobile, country } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required.' });
+    }
 
     if (!full_name || !mobile || !country) {
       return res.status(400).json({ success: false, message: 'Full name, mobile and country are required.' });
@@ -191,27 +234,6 @@ exports.updateProfile = async (req, res) => {
         referral_code: updated.referralCode,
         created_at: updated.createdAt
       }
-    });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// List all registered users (for switching accounts)
-exports.getAllUsers = async (req, res) => {
-  try {
-    const users = await prisma.user.findMany({
-      orderBy: { id: 'asc' }
-    });
-
-    return res.json({
-      success: true,
-      users: users.map(u => ({
-        id: u.id,
-        full_name: u.fullName,
-        email: u.email,
-        referral_code: u.referralCode
-      }))
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
